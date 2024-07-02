@@ -4,12 +4,15 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 import time
+import albumentations as A
+from sklearn.model_selection import train_test_split
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 current_dir = os.getcwd()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-# Load a pre-trained face detection model
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 
@@ -19,14 +22,24 @@ def capture_images(class_name, num_images):
     os.makedirs(os.path.join(dataset_dir, "labels"), exist_ok=True)
 
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
     print(f"Capturing images for class '{class_name}'...")
     print("Position your face in the frame and press 'c' to start automatic capture, or 'q' to quit.")
 
     i = 0
     capture_started = False
     last_capture_time = 0
-    capture_interval = 0.05
-    output_size = 416
+    capture_interval = 0.03
+    output_size = 640
+
+    augmentation = A.Compose([
+        A.RandomBrightnessContrast(p=0.5),
+        A.GaussNoise(p=0.3),
+        A.HorizontalFlip(p=0.5),
+        A.RandomRotate90(p=0.2),
+    ])
 
     while i < num_images:
         ret, frame = cap.read()
@@ -61,13 +74,17 @@ def capture_images(class_name, num_images):
                     face = frame[y:y + h, x:x + w]
                     resized = cv2.resize(face, (output_size, output_size))
 
+                    # Apply augmentation
+                    augmented = augmentation(image=resized)
+                    augmented_image = augmented["image"]
+
                     img_path = os.path.join(dataset_dir, "images", f"{class_name}_{i}.jpg")
-                    cv2.imwrite(img_path, resized)
+                    cv2.imwrite(img_path, augmented_image)
 
                     # Create label file
                     label_path = os.path.join(dataset_dir, "labels", f"{class_name}_{i}.txt")
                     with open(label_path, "w") as f:
-                        f.write(f"0 0.5 0.5 1.0 1.0")  # Assuming the face covers the entire image
+                        f.write(f"0 0.5 0.5 1.0 1.0")
 
                     print(f"\rProgress: {i + 1}/{num_images} images captured", end="", flush=True)
                     i += 1
@@ -88,10 +105,31 @@ def create_dataset():
         num_images = int(input(f"Enter number of images for {class_name}: "))
         capture_images(class_name, num_images)
 
+    # Split dataset into train and val
+    image_files = os.listdir(os.path.join(current_dir, "dataset", "images"))
+    train_files, val_files = train_test_split(image_files, test_size=0.2, random_state=42)
+
+    os.makedirs(os.path.join(current_dir, "dataset", "train", "images"), exist_ok=True)
+    os.makedirs(os.path.join(current_dir, "dataset", "train", "labels"), exist_ok=True)
+    os.makedirs(os.path.join(current_dir, "dataset", "val", "images"), exist_ok=True)
+    os.makedirs(os.path.join(current_dir, "dataset", "val", "labels"), exist_ok=True)
+
+    for file in train_files:
+        os.rename(os.path.join(current_dir, "dataset", "images", file),
+                  os.path.join(current_dir, "dataset", "train", "images", file))
+        os.rename(os.path.join(current_dir, "dataset", "labels", file.replace(".jpg", ".txt")),
+                  os.path.join(current_dir, "dataset", "train", "labels", file.replace(".jpg", ".txt")))
+
+    for file in val_files:
+        os.rename(os.path.join(current_dir, "dataset", "images", file),
+                  os.path.join(current_dir, "dataset", "val", "images", file))
+        os.rename(os.path.join(current_dir, "dataset", "labels", file.replace(".jpg", ".txt")),
+                  os.path.join(current_dir, "dataset", "val", "labels", file.replace(".jpg", ".txt")))
+
     dataset_yaml_path = os.path.join(current_dir, "dataset.yaml")
     with open(dataset_yaml_path, "w") as f:
-        f.write(f"train: {os.path.join(current_dir, 'dataset', 'images')}\n")
-        f.write(f"val: {os.path.join(current_dir, 'dataset', 'images')}\n")
+        f.write(f"train: {os.path.join(current_dir, 'dataset', 'train', 'images')}\n")
+        f.write(f"val: {os.path.join(current_dir, 'dataset', 'val', 'images')}\n")
         f.write(f"nc: {num_classes}\n")
         f.write(f"names: {classes}")
 
@@ -101,24 +139,49 @@ def create_dataset():
 
 def train_yolo():
     print("Starting YOLOv8 training...")
-    model = YOLO("yolov8m.yaml")  # Using a medium-sized model for better accuracy
+    model = YOLO("yolov8m.pt")  # Use pre-trained weights for transfer learning
     dataset_yaml_path = os.path.join(current_dir, "dataset.yaml")
     results = model.train(
         data=dataset_yaml_path,
-        epochs=300,  # Increase epochs for better training
-        imgsz=416,  # Match the capture size
-        patience=50,  # Early stopping patience
-        batch=16,  # Adjust based on your GPU memory
-        device=device
+        epochs=1000,
+        imgsz=640,
+        patience=100,
+        batch=16,
+        device=device,
+        optimizer="AdamW",
+        lr0=1e-3,
+        lrf=1e-4,
+        momentum=0.937,
+        weight_decay=0.0005,
+        warmup_epochs=3,
+        warmup_momentum=0.8,
+        warmup_bias_lr=0.1,
+        box=7.5,
+        cls=0.5,
+        dfl=1.5,
+        pose=12.0,
+        kobj=1.0,
+        label_smoothing=0.0,
+        nbs=64,
+        overlap_mask=True,
+        mask_ratio=4,
+        dropout=0.0,
+        val=True,
+        save=True,
+        save_period=100,
+        project=os.path.join(current_dir, "runs"),
+        name="train",
     )
     print("Training completed.")
 
 
 def run_inference():
     print("Starting inference...")
-    weights_path = os.path.join(current_dir, "runs", "detect", "train", "weights", "best.pt")
+    weights_path = os.path.join(current_dir, "runs", "train", "weights", "best.pt")
     model = YOLO(weights_path)
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     while True:
         ret, frame = cap.read()
@@ -138,5 +201,5 @@ def run_inference():
 if __name__ == "__main__":
     create_dataset()
     time.sleep(1)
-    train_yolo()
-    run_inference()
+    #train_yolo()
+    #run_inference()
