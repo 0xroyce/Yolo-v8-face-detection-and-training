@@ -39,7 +39,7 @@ This repository contains a Python script designed for capturing images of faces,
 
 1. Run the script to create a dataset:
    ```sh
-   python script.py
+   python train_yolo.py
    ```
 
 2. Follow the prompts to enter the number of classes and the number of images for each class. Position your face in the frame and press 'c' to start capturing images. Press 'q' to quit capturing.
