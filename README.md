@@ -54,14 +54,9 @@ Once the model is trained, the script will begin running inference in real-time 
 
 ## Dependencies
 
-- Python 3.8+
-- OpenCV
-- PyTorch
-- Ultralytics YOLO
-
 You can install the dependencies by running:
 ```sh
-pip install opencv-python torch ultralytics
+pip install -r requirements.txt
 ```
 
 ## Contributing
