@@ -18,8 +18,8 @@ This repository contains a Python script designed for capturing images of faces,
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/0xroyce/facedetection-yolov8.git
-   cd facedetection-yolov8
+   git clone https://github.com/0xroyce/Yolo-v8-face-detection-and-training.git
+   cd Yolo-v8-face-detection-and-training
    ```
 
 2. Create and activate a virtual environment (optional but recommended):
@@ -61,7 +61,7 @@ Once the model is trained, the script will begin running inference in real-time 
 
 You can install the dependencies by running:
 ```sh
-pip install opencv-python-headless torch ultralytics
+pip install opencv-python torch ultralytics
 ```
 
 ## Contributing
