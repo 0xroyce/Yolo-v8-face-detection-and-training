@@ -3,6 +3,10 @@
 
 This repository contains a Python script designed for capturing images of faces, creating a dataset, training a YOLOv8 model, and running real-time inference. The script is built using OpenCV, PyTorch, and the YOLO library from Ultralytics.
 
+The script works on CPU or GPU(s) but I recommend at least 1 GPU.
+
+I recommend to set 250 images to capture as a minimum and 80 negative images as a minimum. In ideal scenario, you capture +600 images and +180 negative images. But bear in mind that you will need to sit in front of the camera for quite a long time. You can, however, shorten the capture images time and test it.
+
 ## Table of Contents
 
 - [Installation](#installation)
